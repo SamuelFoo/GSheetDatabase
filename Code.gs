@@ -16,7 +16,7 @@ const ORDERS_DESC_COLNAME = "Description of Order";
 const CASHFLOW_SHEET_NAME = "Cashflow";
 const CASHFLOW_DATA_RANGE = "B2:E";
 const CASHFLOW_ID_COLNAME = "Cashflow Id";
-const CASHFLOW_START_ROW = 724; // Row no. at which Cashflow Id = 100001
+const CASHFLOW_START_ROW = 3; // Row no. at which Cashflow Id = 100001
 const CASHFLOW_START_COL = 2; // Col no. of "CashflowId", index starts from 1
 
 // Spendings Definitions
@@ -162,6 +162,13 @@ function sortByDateFunc(row1, row2, dateCol) {
   return 0;
 }
 
+function groupBy(data, colIdx) {
+  return data.reduce((x, y) => {
+    (x[y[colIdx]] = x[y[colIdx]] || []).push(y);
+    return x;
+  }, {})
+}
+
 // Clear out existing data and then set it
 function clearAndSet(sheetName, startCol, startRow, data) {
   /* Clearing out existing data is important as it accounts for
@@ -238,7 +245,7 @@ function updateCashflow() {
 // Updates "Inventory By Date"
 function updateInventoryByDate() {
   let inventoryData = []; // [Item No., Bought No., Sold No., Left, Bought Price, Date]
-  let inventorySpendingsLog = []; // [itemName, itemCost, numBought, numSold, Date]
+  let inventorySpendingsLog = []; // [itemName, numBought, numSold, itemCost, Date]
   let inventoryOrdersLog = []; // [itemName, itemCost, numBought, numSold, Date]
 
   // Process spendings
@@ -273,33 +280,32 @@ function updateInventoryByDate() {
 
   // Aggregate spendings with the same date -> inventoryData
   let dateCol = 4;
-  inventorySpendingsLog = inventorySpendingsLog.reduce((x, y) => {
-    (x[y[0]] = x[y[0]] || []).push(y);
-    return x;
-  }, {}); // Group by itemName
+  // Group by itemName
+  inventorySpendingsLog = groupBy(inventorySpendingsLog, 0);
   for (let name in inventorySpendingsLog) {
-    inventorySpendingsLog[name] = inventorySpendingsLog[name].reduce((x, y) => {
-      (x[y[dateCol]] = x[y[dateCol]] || []).push(y);
-      return x;
-    }, {}); // For each itemName group, group by date
+    // For each itemName group, group by date
+    inventorySpendingsLog[name] = groupBy(inventorySpendingsLog[name], dateCol);
     
     // Logger.log(inventorySpendingsLog[name]);
 
     for (let date in inventorySpendingsLog[name]) {
-      let numBought = 0;
-      let numSold = 0;
+      // For each date group inside each itemName group, group by cost
+      Logger.log(inventorySpendingsLog[name][date]);
+      inventorySpendingsLog[name][date] = groupBy(inventorySpendingsLog[name][date], 3);
 
-      for (let i = 0; i < inventorySpendingsLog[name][date].length; i++) {
-        let row = inventorySpendingsLog[name][date][i];
-        numBought += Number(row[1]);
-        numSold += Number(row[2]);
+      for (let cost in inventorySpendingsLog[name][date]) {
+        let numBought = 0;
+        let numSold = 0;
+
+        for (let i = 0; i < inventorySpendingsLog[name][date][cost].length; i++) {
+          let row = inventorySpendingsLog[name][date][cost][i];
+          numBought += Number(row[1]);
+          numSold += Number(row[2]);
+        }
+        
+        let numLeft = numBought-numSold;
+        inventoryData.push([name, numBought, numSold, numLeft, cost, date]);
       }
-      
-      let numLeft = numBought-numSold;
-      // Asssumption: items of the same name bought on the same date have the same cost.
-      let cost = inventorySpendingsLog[name][date][0][3]; 
-
-      inventoryData.push([name, numBought, numSold, numLeft, cost, date]);
     }
   }
 
