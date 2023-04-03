@@ -11,6 +11,7 @@ const ORDERS_DATE_COLNAME = "Date Payment Received";
 const ORDERS_MONEY_WITH_COLNAME = "Account Paid To";
 const ORDERS_TYPE_COLNAME = "Nature of Invoice";
 const ORDERS_DESC_COLNAME = "Description of Order";
+const ORDERS_EXPENSE_COLNAME = "Order Expense";
 
 // Cashflow Definitions
 const CASHFLOW_SHEET_NAME = "Cashflow";
@@ -46,6 +47,12 @@ const PROFITS_SHEET_NAME = "Profits";
 const PROFITS_DATA_RANGE = "A1:G";
 const PROFITS_START_COL = 1;
 const PROFITS_START_ROW = 2;
+
+// Expenses Defintions
+const EXPENSES_SHEET_NAME = "Expenses";
+const EXPENSES_DATA_RANGE = "B1:F";
+const EXPENSES_START_COL = 2;
+const EXPENSES_START_ROW = 2;
 
 // Imitates Python's Pandas DataFrame
 class DataFrame {
@@ -219,11 +226,17 @@ function updateCashflow() {
   // Logger.log(outflows);
 
   // Orders (payments) data processing
-  let [ordersDateData, ordersIdsData, ordersPriceData] = paymentsDF.loc([ORDERS_DATE_COLNAME, ORDERS_ID_COLNAME, ORDERS_PRICE_COLNAME]).T().data;
+  let [ordersDateData, ordersIdsData, ordersPriceData, ordersExpense] = paymentsDF.loc([ORDERS_DATE_COLNAME, ORDERS_ID_COLNAME, ORDERS_PRICE_COLNAME, ORDERS_EXPENSE_COLNAME]).T().data;
 
+  let descString, outflow;
   for(let i = 0; i < ordersDateData.length; i++) {
-    descString = "Payment for Order Id = " + String(ordersIdsData[i])
-    cashFlowData.push([ordersDateData[i], descString, ordersPriceData[i], ""]);
+    descString = "Payment for Order Id = " + String(ordersIdsData[i]);
+    if (
+      isNaN(ordersExpense[i]) || // if value in the order expense column is not numeric
+      isNaN(parseFloat(ordersExpense[i])) // or is whitespace,
+      ) outflow = ""; // there is no outflow.
+    else outflow = ordersExpense[i]; // vice versa
+    cashFlowData.push([ordersDateData[i], descString, ordersPriceData[i], outflow]);
   }
 
   // Spendings data processing
@@ -437,6 +450,36 @@ function updateProfits() {
   }
 
   clearAndSet(PROFITS_SHEET_NAME, PROFITS_START_COL, PROFITS_START_ROW, profitsData);
+}
+
+// Updates "Expenses"
+function updateExpenses() {
+  let expensesData = [];
+
+  // Process orders
+  const ordersFilterConds = [
+    [ORDERS_EXPENSE_COLNAME, (x,y) => !isNaN(x) && !isNaN(parseFloat(x)), '']
+  ];
+  let ordersDF = OrdersDF.filterDF(ordersFilterConds);
+  let [ordersDateData, ordersDescData, ordersCostData] = ordersDF.loc([ORDERS_DATE_COLNAME, ORDERS_DESC_COLNAME, ORDERS_EXPENSE_COLNAME]).T().data;
+  for(let i = 0; i < ordersDateData.length; i++) {
+    expensesData.push([ordersDateData[i], ordersDescData[i], "Order Expense", ordersCostData[i]]);
+  }
+
+  // Process spendings
+  let spendingsDF = getReimbursedSpendings();
+  const spendingsFilterConds = [
+    [SPENDINGS_TYPE_COLNAME, (x,y) => y.includes(x), ["Transport Expense", "Utility Expense", "R&D Expense"]]
+  ];
+  spendingsDF = spendingsDF.filterDF(spendingsFilterConds);
+
+  let [spendingsDateData, spendingsDescData, spendingsTypeData, spendingsCostData] = spendingsDF.loc([SPENDINGS_DATE_COLNAME, SPENDINGS_DESC_COLNAME, SPENDINGS_TYPE_COLNAME, SPENDINGS_COST_COLNAME]).T().data;
+  for(let i = 0; i < spendingsDateData.length; i++) {
+    expensesData.push([spendingsDateData[i], spendingsDescData[i], spendingsTypeData[i], spendingsCostData[i]]);
+  }
+
+  expensesData.sort((row1, row2) => sortByDateFunc(row1, row2, 0));
+  clearAndSet(EXPENSES_SHEET_NAME, EXPENSES_START_COL, EXPENSES_START_ROW, expensesData);
 }
 
 // Clears Order Entry Form
